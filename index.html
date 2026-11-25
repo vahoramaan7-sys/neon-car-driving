@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>TURBO DRIFT // Black Edition 3D</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <canvas id="road-canvas"></canvas>
+
+    <!-- Top HUD -->
+    <header id="hud" class="hidden">
+      <div class="hud-left">
+        <div class="stat">
+          <span class="lbl">SCORE</span>
+          <span id="hud-score" class="val cyan">000000</span>
+        </div>
+        <div class="stat">
+          <span class="lbl">BEST</span>
+          <span id="hud-best" class="val amber">000000</span>
+        </div>
+        <div class="stat">
+          <span class="lbl">SPEED</span>
+          <span id="hud-speed" class="val white">120 KM/H</span>
+        </div>
+      </div>
+
+      <div class="hud-right">
+        <div class="stat">
+          <span class="lbl">HULL</span>
+          <div id="hud-hearts" class="hearts"></div>
+        </div>
+        <div class="stat">
+          <span class="lbl">NITRO [SPACE]</span>
+          <div class="nitro-bar">
+            <div id="hud-nitro-fill" class="nitro-fill"></div>
+          </div>
+        </div>
+        <div class="hud-btns">
+          <button id="btn-cam" class="icon-btn active" title="Switch Camera [C]">CAM: 3D CHASE</button>
+          <button id="btn-lights" class="icon-btn active" title="Headlights [L]">LIGHTS: HIGH</button>
+          <button id="btn-wiper" class="icon-btn" title="Wipers [V]">WIPER</button>
+          <button id="btn-hazard" class="icon-btn" title="Hazards [X]">⚠</button>
+          <button id="btn-horn" class="icon-btn" title="Horn [H]">HORN</button>
+          <button id="btn-mute" class="icon-btn" title="Sound [M]">SFX</button>
+          <button id="btn-pause" class="icon-btn" title="Pause [P]">II</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Active Buffs -->
+    <div id="buff-bar" class="hidden"></div>
+
+    <!-- Mobile Touch Controls -->
+    <div id="touch-controls" class="hidden" aria-label="Touch Controls">
+      <div class="touch-left-group">
+        <button id="touch-left" class="touch-btn" type="button">◀</button>
+        <button id="touch-right" class="touch-btn" type="button">▶</button>
+      </div>
+      <div class="touch-right-group">
+        <button id="touch-horn" class="touch-btn small" type="button">HORN</button>
+        <button id="touch-brake" class="touch-btn small" type="button">BRAKE</button>
+        <button id="touch-nitro" class="touch-btn nitro" type="button">NITRO</button>
+      </div>
+    </div>
+
+    <!-- Start Screen -->
+    <section id="screen-start" class="overlay">
+      <div class="card">
+        <div class="tag">BLACK EDITION // 3D HIGHWAY RACER</div>
+        <h1>TURBO <span>DRIFT</span></h1>
+        <p class="desc">Apni Black Supercar choose karo, 3D city highway par drive karo aur Cockpit Interior camera try karo!</p>
+
+        <div class="garage-label">SELECT YOUR BLACK EDITION CAR</div>
+        <div id="garage-grid" class="garage-grid">
+          <button type="button" class="car-choice active" data-car="bmw">
+            <strong>BMW M4</strong>
+            <span>Angel-Eyes • Balanced</span>
+          </button>
+          <button type="button" class="car-choice" data-car="mercedes">
+            <strong>MERCEDES AMG</strong>
+            <span>Twin-Slash • Sharp Grip</span>
+          </button>
+          <button type="button" class="car-choice" data-car="lambo">
+            <strong>LAMBORGHINI</strong>
+            <span>Y-Beam LED • Max Speed</span>
+          </button>
+          <button type="button" class="car-choice" data-car="mahindra">
+            <strong>MAHINDRA SUV</strong>
+            <span>Heavy Build • +1 Hull</span>
+          </button>
+        </div>
+
+        <div class="controls-box">
+          <div><kbd>A</kbd> <kbd>D</kbd> / <kbd>◀</kbd> <kbd>▶</kbd> <span>Steer &amp; Turn Steering Wheel</span></div>
+          <div><kbd>SPACE</kbd> / <kbd>▲</kbd> <span>Nitro Boost (2x Score)</span></div>
+          <div><kbd>C</kbd> <span>Camera: 3D Chase / Cockpit / Hood / Top</span></div>
+          <div><kbd>L</kbd> / <kbd>H</kbd> / <kbd>V</kbd> / <kbd>X</kbd> <span>Headlights / Horn / Wiper / Hazard</span></div>
+        </div>
+
+        <button id="btn-start" class="cta-btn">DRIVE NOW</button>
+        <div class="best-text">HIGH SCORE: <span id="start-best">000000</span></div>
+      </div>
+    </section>
+
+    <!-- Pause Screen -->
+    <section id="screen-pause" class="overlay hidden">
+      <div class="card compact">
+        <h2>RACE PAUSED</h2>
+        <p class="desc">Press <kbd>P</kbd> or Resume to continue driving.</p>
+        <div class="btn-row">
+          <button id="btn-resume" class="cta-btn">RESUME</button>
+          <button id="btn-restart-pause" class="ghost-btn">RESTART</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Game Over Screen -->
+    <section id="screen-gameover" class="overlay hidden">
+      <div class="card compact">
+        <div class="tag danger">WIPEOUT!</div>
+        <h2 class="go-title">GAME OVER</h2>
+        <div class="summary">
+          <div><span>CAR DRIVEN</span><strong id="go-car">BMW M4</strong></div>
+          <div><span>FINAL SCORE</span><strong id="go-score">0</strong></div>
+          <div><span>BEST SCORE</span><strong id="go-best">0</strong></div>
+          <div><span>DISTANCE</span><strong id="go-dist">0.0 KM</strong></div>
+          <div><span>NEAR MISSES</span><strong id="go-nearmiss">0</strong></div>
+        </div>
+        <div id="new-best" class="new-best hidden">★ NEW HIGH SCORE ★</div>
+        <div class="btn-row">
+          <button id="btn-retry" class="cta-btn">RACE AGAIN</button>
+          <button id="btn-menu" class="ghost-btn">GARAGE</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script src="audio.js" defer></script>
+  <script src="game.js" defer></script>
+</body>
+</html>

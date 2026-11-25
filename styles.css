@@ -1,0 +1,491 @@
+:root {
+  --bg: #070812;
+  --card: rgba(11, 14, 30, 0.9);
+  --cyan: #00f3ff;
+  --magenta: #ff2a85;
+  --amber: #ffb800;
+  --crimson: #ff3355;
+  --lime: #39ff14;
+  --text: #eef6ff;
+  --muted: #8a9bb8;
+  --font: "Courier New", Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  touch-action: none;
+}
+
+#app {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+#road-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* HUD */
+#hud {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 5;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 12px 16px;
+  gap: 12px;
+  pointer-events: none;
+  background: linear-gradient(to bottom, rgba(7, 8, 18, 0.85), rgba(7, 8, 18, 0));
+}
+
+.hud-left,
+.hud-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.lbl {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.val {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.val.cyan {
+  color: var(--cyan);
+  text-shadow: 0 0 10px rgba(0, 243, 255, 0.7);
+}
+
+.val.amber {
+  color: var(--amber);
+}
+
+.val.white {
+  color: var(--text);
+}
+
+.hearts {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-height: 20px;
+}
+
+.heart {
+  width: 15px;
+  height: 15px;
+  background: var(--crimson);
+  box-shadow: 0 0 8px rgba(255, 51, 85, 0.75);
+  clip-path: polygon(50% 90%, 10% 45%, 10% 22%, 30% 10%, 50% 26%, 70% 10%, 90% 22%, 90% 45%);
+}
+
+.heart.empty {
+  background: rgba(255, 51, 85, 0.2);
+  box-shadow: none;
+}
+
+.shield-icon {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--cyan);
+  background: rgba(0, 243, 255, 0.35);
+  transform: rotate(45deg);
+  margin-left: 4px;
+}
+
+.nitro-bar {
+  width: 112px;
+  height: 10px;
+  border: 1px solid rgba(0, 243, 255, 0.5);
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.nitro-fill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, #00f3ff, #39ff14);
+  box-shadow: 0 0 10px rgba(0, 243, 255, 0.75);
+}
+
+.hud-btns {
+  display: flex;
+  gap: 6px;
+  pointer-events: auto;
+}
+
+.icon-btn {
+  background: rgba(15, 20, 42, 0.85);
+  color: var(--muted);
+  border: 1px solid rgba(138, 155, 184, 0.35);
+  padding: 6px 9px;
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.14s ease;
+}
+
+.icon-btn:hover {
+  border-color: var(--cyan);
+  color: var(--text);
+}
+
+.icon-btn.active {
+  color: var(--cyan);
+  border-color: rgba(0, 243, 255, 0.65);
+  box-shadow: 0 0 10px rgba(0, 243, 255, 0.25);
+}
+
+.icon-btn.muted {
+  color: var(--muted);
+  border-color: rgba(138, 155, 184, 0.35);
+}
+
+.garage-label {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: var(--cyan);
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+
+.garage-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.car-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 10px;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: var(--text);
+  font-family: var(--font);
+  cursor: pointer;
+  transition: all 0.14s ease;
+}
+
+.car-choice strong {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: #ffffff;
+}
+
+.car-choice span {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.car-choice:hover {
+  border-color: rgba(0, 243, 255, 0.6);
+}
+
+.car-choice.active {
+  background: rgba(0, 243, 255, 0.12);
+  border-color: var(--cyan);
+  box-shadow: 0 0 14px rgba(0, 243, 255, 0.25);
+}
+
+.car-choice.active strong {
+  color: var(--cyan);
+}
+
+#buff-bar {
+  position: absolute;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.buff-pill {
+  font-size: 11px;
+  font-weight: 800;
+  padding: 4px 9px;
+  border: 1px solid currentColor;
+  background: rgba(7, 8, 18, 0.85);
+}
+
+/* Mobile Touch Controls */
+#touch-controls {
+  position: absolute;
+  bottom: 18px;
+  left: 16px;
+  right: 16px;
+  z-index: 6;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  pointer-events: none;
+}
+
+.touch-left-group,
+.touch-right-group {
+  display: flex;
+  gap: 10px;
+  pointer-events: auto;
+}
+
+.touch-btn {
+  width: 68px;
+  height: 68px;
+  border-radius: 14px;
+  border: 2px solid rgba(0, 243, 255, 0.55);
+  background: rgba(10, 16, 36, 0.62);
+  color: var(--cyan);
+  font-family: var(--font);
+  font-size: 22px;
+  font-weight: 800;
+  backdrop-filter: blur(4px);
+  box-shadow: 0 0 14px rgba(0, 243, 255, 0.25);
+  cursor: pointer;
+}
+
+.touch-btn.small {
+  width: 72px;
+  height: 54px;
+  font-size: 12px;
+  border-color: rgba(255, 184, 0, 0.6);
+  color: var(--amber);
+}
+
+.touch-btn.nitro {
+  width: 86px;
+  height: 68px;
+  font-size: 14px;
+  border-color: rgba(57, 255, 20, 0.7);
+  color: var(--lime);
+  box-shadow: 0 0 16px rgba(57, 255, 20, 0.28);
+}
+
+.touch-btn.pressed,
+.touch-btn:active {
+  transform: scale(0.94);
+  background: rgba(0, 243, 255, 0.24);
+}
+
+/* Overlays */
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(5, 6, 15, 0.72);
+  backdrop-filter: blur(4px);
+}
+
+.card {
+  width: 100%;
+  max-width: 520px;
+  background: var(--card);
+  border: 2px solid var(--cyan);
+  box-shadow: 0 0 30px rgba(0, 243, 255, 0.25);
+  padding: 26px 24px;
+  text-align: center;
+}
+
+.card.compact {
+  max-width: 420px;
+}
+
+.tag {
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  color: var(--amber);
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+
+.tag.danger {
+  color: var(--crimson);
+}
+
+h1 {
+  font-size: clamp(32px, 6vw, 48px);
+  letter-spacing: 0.1em;
+  color: var(--cyan);
+  text-shadow: 0 0 14px rgba(0, 243, 255, 0.75);
+  margin-bottom: 10px;
+}
+
+h1 span {
+  color: var(--magenta);
+  text-shadow: 0 0 14px rgba(255, 42, 133, 0.75);
+}
+
+.go-title {
+  font-size: 34px;
+  color: var(--crimson);
+  margin-bottom: 16px;
+}
+
+.desc {
+  color: #b7c8e6;
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 18px;
+}
+
+.controls-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+  margin-bottom: 20px;
+}
+
+.controls-box > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.controls-box span {
+  color: var(--muted);
+}
+
+kbd {
+  display: inline-block;
+  padding: 2px 6px;
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--cyan);
+  border: 1px solid rgba(0, 243, 255, 0.5);
+  background: rgba(0, 243, 255, 0.08);
+}
+
+.cta-btn,
+.ghost-btn {
+  font-family: var(--font);
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  padding: 12px 24px;
+  cursor: pointer;
+}
+
+.cta-btn {
+  background: var(--cyan);
+  color: #070812;
+  border: 2px solid var(--cyan);
+  box-shadow: 0 0 16px rgba(0, 243, 255, 0.6);
+}
+
+.ghost-btn {
+  background: transparent;
+  color: var(--text);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.btn-row {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.best-text {
+  margin-top: 14px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.best-text span {
+  color: var(--amber);
+  font-weight: 800;
+}
+
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.32);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.summary > div {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+}
+
+.summary span {
+  color: var(--muted);
+}
+
+.summary strong {
+  color: var(--cyan);
+}
+
+.new-best {
+  margin-top: 12px;
+  color: var(--amber);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+@media (max-width: 600px) {
+  .val {
+    font-size: 15px;
+  }
+  .nitro-bar {
+    width: 84px;
+  }
+}
