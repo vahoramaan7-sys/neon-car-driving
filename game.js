@@ -31,6 +31,7 @@
   const btnMenu = document.getElementById("btn-menu");
 
   const btnCam = document.getElementById("btn-cam");
+  const btnTime = document.getElementById("btn-time");
   const btnLights = document.getElementById("btn-lights");
   const btnWiper = document.getElementById("btn-wiper");
   const btnHazard = document.getElementById("btn-hazard");
@@ -100,13 +101,14 @@
   ];
 
   const LIGHT_MODES = ["HIGH", "LOW", "OFF"];
+  const TIME_MODES = ["AUTO", "DAY", "SUNSET", "NIGHT"];
   const GANTRY_SIGNS = [
-    ["ASPHALT METRO", "DOWNTOWN  2 KM"],
-    ["BAYSIDE EXPRESS", "NITRO ZONE AHEAD"],
-    ["SKYLINE BRIDGE", "SPEED LIMIT 280"],
-    ["NEON HARBOR", "EXIT 07   1 KM"],
+    ["TIMES SQ / 42ND ST", "MANHATTAN  EXIT 4"],
+    ["BROOKLYN BRIDGE", "DOWNTOWN   2 MI"],
+    ["FDR DRIVE SOUTH", "WALL ST / HARBOR"],
+    ["5TH AVE MIDTOWN", "CENTRAL PARK  1 MI"],
   ];
-  const BILLBOARD_TITLES = ["ASPHALT", "TURBO 9", "M-POWER", "APEX", "NITRO X", "METRO"];
+  const BILLBOARD_TITLES = ["TIMES SQ", "BROADWAY", "NEW YORK", "MANHATTAN", "WALL ST", "NYC 24/7"];
 
   let viewW = window.innerWidth;
   let viewH = window.innerHeight;
@@ -130,6 +132,8 @@
 
   let selectedCarId = "bmw";
   let camIndex = 0; // 3D CHASE default
+  let timeModeIndex = 0; // AUTO (Day -> Sunset -> Night)
+  let dayPhase = 0.08; // Starts in bright realistic Day and smoothly cycles
   let lightIndex = 0; // HIGH
   let wipersOn = false;
   let hazardOn = false;
@@ -147,12 +151,111 @@
     alpha: 0.25 + Math.random() * 0.6,
   }));
 
+  const clouds = Array.from({ length: 12 }, (_, idx) => ({
+    x: (idx / 12) + Math.random() * 0.08,
+    y: 0.06 + (idx % 4) * 0.055,
+    w: 90 + (idx % 3) * 55,
+    h: 22 + (idx % 2) * 12,
+    speed: 0.005 + (idx % 3) * 0.003,
+  }));
+
   const windshieldDrops = Array.from({ length: 28 }, () => ({
     x: 0.08 + Math.random() * 0.84,
     y: 0.08 + Math.random() * 0.58,
     r: 1 + Math.random() * 2,
     vy: 0.04 + Math.random() * 0.08,
   }));
+
+  function lerp(a, b, t) {
+    return a + (b - a) * t;
+  }
+
+  function lerpRGB(c1, c2, t) {
+    const r = Math.round(lerp(c1[0], c2[0], t));
+    const g = Math.round(lerp(c1[1], c2[1], t));
+    const b = Math.round(lerp(c1[2], c2[2], t));
+    return `rgb(${r},${g},${b})`;
+  }
+
+  function getEffectivePhase() {
+    const mode = TIME_MODES[timeModeIndex];
+    if (mode === "DAY") return 0;
+    if (mode === "SUNSET") return 1;
+    if (mode === "NIGHT") return 2;
+    return dayPhase % 3;
+  }
+
+  function getAtmosphere() {
+    const p = getEffectivePhase(); // 0=Day, 1=Sunset, 2=Night, 3->0=Day
+    const keysAtmo = [
+      {
+        // DAY
+        skyTop: [29, 78, 216],
+        skyMid: [56, 189, 248],
+        skyHor: [186, 230, 253],
+        terrain: [22, 68, 44],
+        roadA: [52, 58, 70],
+        roadB: [45, 51, 62],
+        shoulder: [90, 98, 112],
+        bldgTop: [100, 128, 165],
+        bldgBot: [51, 65, 85],
+        sunAlpha: 1,
+        sunsetAlpha: 0,
+        nightAlpha: 0,
+      },
+      {
+        // GOLDEN SUNSET
+        skyTop: [30, 27, 75],
+        skyMid: [190, 24, 93],
+        skyHor: [251, 146, 60],
+        terrain: [26, 24, 38],
+        roadA: [36, 34, 48],
+        roadB: [30, 28, 42],
+        shoulder: [58, 48, 66],
+        bldgTop: [68, 48, 86],
+        bldgBot: [28, 22, 42],
+        sunAlpha: 0.75,
+        sunsetAlpha: 1,
+        nightAlpha: 0.35,
+      },
+      {
+        // NYC NIGHT
+        skyTop: [2, 5, 16],
+        skyMid: [14, 24, 54],
+        skyHor: [48, 34, 62],
+        terrain: [8, 16, 26],
+        roadA: [21, 27, 41],
+        roadB: [17, 22, 34],
+        shoulder: [23, 30, 46],
+        bldgTop: [34, 48, 82],
+        bldgBot: [9, 14, 28],
+        sunAlpha: 0,
+        sunsetAlpha: 0.12,
+        nightAlpha: 1,
+      },
+    ];
+
+    const i0 = Math.floor(p) % 3;
+    const i1 = (i0 + 1) % 3;
+    const t = p - Math.floor(p);
+    const a = keysAtmo[i0];
+    const b = keysAtmo[i1];
+
+    return {
+      skyTop: lerpRGB(a.skyTop, b.skyTop, t),
+      skyMid: lerpRGB(a.skyMid, b.skyMid, t),
+      skyHor: lerpRGB(a.skyHor, b.skyHor, t),
+      terrain: lerpRGB(a.terrain, b.terrain, t),
+      roadA: lerpRGB(a.roadA, b.roadA, t),
+      roadB: lerpRGB(a.roadB, b.roadB, t),
+      shoulder: lerpRGB(a.shoulder, b.shoulder, t),
+      bldgTop: lerpRGB(a.bldgTop, b.bldgTop, t),
+      bldgBot: lerpRGB(a.bldgBot, b.bldgBot, t),
+      sunAlpha: lerp(a.sunAlpha, b.sunAlpha, t),
+      sunsetAlpha: lerp(a.sunsetAlpha, b.sunsetAlpha, t),
+      nightAlpha: lerp(a.nightAlpha, b.nightAlpha, t),
+    };
+  }
 
   function laneNorm(laneIdx) {
     return -0.75 + laneIdx * 0.5;
@@ -168,13 +271,25 @@
   }
   refreshBestUI();
 
-  // Smooth Asphalt-style Highway Curve & Elevation Functions
-  function roadCurve(wz) {
-    return Math.sin(wz * 0.00052) * 0.72 + Math.sin(wz * 0.00023) * 0.45;
+  // Straight New York Expressway + Elevated Sky-Flyover Viaduct Sections
+  function roadCurve() {
+    return 0;
   }
 
   function roadHill(wz) {
-    return Math.sin(wz * 0.00072) * 26 + Math.cos(wz * 0.00035) * 14;
+    const cycle = ((wz % 3400) + 3400) % 3400;
+    const maxElev = 58;
+    if (cycle < 1400) return 0;
+    if (cycle < 1900) {
+      const u = (cycle - 1400) / 500;
+      return maxElev * (0.5 - 0.5 * Math.cos(u * Math.PI));
+    }
+    if (cycle < 2700) return maxElev;
+    if (cycle < 3200) {
+      const u = (cycle - 2700) / 500;
+      return maxElev * (0.5 + 0.5 * Math.cos(u * Math.PI));
+    }
+    return 0;
   }
 
   function createRun() {
@@ -309,13 +424,15 @@
     }
 
     const pool = [
+      { kind: "taxi", body: "#eab308", bodyHi: "#fde047", wNorm: 0.166, zLen: 66, speed: 178 },
+      { kind: "taxi", body: "#ca8a04", bodyHi: "#facc15", wNorm: 0.166, zLen: 66, speed: 186 },
       { kind: "bmw", body: "#111827", bodyHi: "#374151", wNorm: 0.165, zLen: 66, speed: 205 },
       { kind: "mercedes", body: "#94a3b8", bodyHi: "#e2e8f0", wNorm: 0.168, zLen: 66, speed: 200 },
       { kind: "lambo", body: "#ca8a04", bodyHi: "#fde047", wNorm: 0.172, zLen: 64, speed: 250 },
       { kind: "mahindra", body: "#0f172a", bodyHi: "#334155", wNorm: 0.185, zLen: 74, speed: 175 },
       { kind: "sedan", body: "#7f1d1d", bodyHi: "#dc2626", wNorm: 0.162, zLen: 64, speed: 185 },
       { kind: "truck", body: "#1e293b", bodyHi: "#64748b", wNorm: 0.2, zLen: 108, speed: 130 },
-      { kind: "police", body: "#090d16", bodyHi: "#1e293b", wNorm: 0.168, zLen: 66, speed: 245 },
+      { kind: "police", body: "#e2e8f0", bodyHi: "#f8fafc", wNorm: 0.168, zLen: 66, speed: 245 },
     ];
     const pick = pool[Math.floor(Math.random() * pool.length)];
 
@@ -392,6 +509,14 @@
   function update(dt) {
     if (hornFlashTimer > 0) hornFlashTimer -= dt;
     if (wipersOn) wiperPhase += dt * 6.5;
+
+    if (TIME_MODES[timeModeIndex] === "AUTO") {
+      dayPhase = (dayPhase + dt * 0.028) % 3;
+    }
+
+    for (const cl of clouds) {
+      cl.x = (cl.x + cl.speed * dt) % 1.2;
+    }
 
     for (const d of windshieldDrops) {
       d.y += d.vy * dt * (run && run.player.boosting ? 2.2 : 1);
@@ -701,13 +826,14 @@
         dx += roadCurve(absZ) * 0.032;
         xOff += dx;
       }
-      const yOff = roadHill(absZ) - baseElev;
+      const absElev = roadHill(absZ);
+      const yOff = absElev - baseElev;
       const dz = z + proj.camZ;
       const scale = proj.camZ / dz;
       const yScreen = proj.horizonY + (proj.groundY - proj.horizonY) * scale - yOff * scale;
       const cx = viewW * 0.5 + (0 - proj.camX) * proj.roadHalfBottom * scale + xOff * proj.curveScale * scale;
       const halfW = proj.roadHalfBottom * scale;
-      slices.push({ z, absZ, xOff, yOff, scale, yScreen, cx, halfW });
+      slices.push({ z, absZ, absElev, xOff, yOff, scale, yScreen, cx, halfW });
     }
     return slices;
   }
@@ -742,75 +868,178 @@
     const camZ = (camId === "chase3d" ? 215 : 122) * (1 - fov * 0.1);
     const roadHalfBottom = Math.min(viewW * 0.48, camId === "chase3d" ? 375 : 495) * (1 + fov * 0.08);
     const p = run ? run.player : { xNorm: 0 };
-    const camX = p.xNorm * (camId === "chase3d" ? 0.3 : 0.65);
+    const camX = p.xNorm * (camId === "chase3d" ? 0.14 : 0.65);
     const curveScale = viewW * 0.42;
     return { horizonY, groundY, camZ, roadHalfBottom, camX, curveScale };
   }
 
-  // ==================== ASPHALT LEGENDS METROPOLIS SKYLINE & BUILDINGS ====================
-  function drawAsphaltSky(horizonY, worldZ) {
-    // Rich dusk-to-night metropolis sky
+  // ==================== NEW YORK CITY DAY / SUNSET / NIGHT HIGH-GRAPHICS ====================
+  function drawAsphaltSky(horizonY, worldZ, atmo) {
+    // Dynamic Day / Golden Sunset / Night sky gradient
     const sky = ctx.createLinearGradient(0, 0, 0, horizonY + 14);
-    sky.addColorStop(0, "#040713");
-    sky.addColorStop(0.45, "#0d1633");
-    sky.addColorStop(0.82, "#24193c");
-    sky.addColorStop(1, "#3b1f3b");
+    sky.addColorStop(0, atmo.skyTop);
+    sky.addColorStop(0.55, atmo.skyMid);
+    sky.addColorStop(1, atmo.skyHor);
     ctx.fillStyle = sky;
     ctx.fillRect(-40, -40, viewW + 80, horizonY + 54);
 
-    // Stars
-    for (const s of nightStars) {
-      ctx.fillStyle = `rgba(226, 232, 240, ${s.alpha})`;
-      ctx.fillRect(s.x * viewW, s.y * viewH, s.size, s.size);
+    // Stars (visible at Night/Dusk)
+    if (atmo.nightAlpha > 0.08) {
+      ctx.save();
+      ctx.globalAlpha = atmo.nightAlpha;
+      for (const s of nightStars) {
+        ctx.fillStyle = `rgba(226, 232, 240, ${s.alpha})`;
+        ctx.fillRect(s.x * viewW, s.y * viewH, s.size, s.size);
+      }
+      ctx.restore();
     }
 
-    // Glowing city horizon dome (amber/magenta metropolis light)
-    const cityGlow = ctx.createLinearGradient(0, horizonY - 85, 0, horizonY + 12);
-    cityGlow.addColorStop(0, "rgba(236, 72, 153, 0)");
-    cityGlow.addColorStop(0.65, "rgba(249, 115, 22, 0.18)");
-    cityGlow.addColorStop(1, "rgba(56, 189, 248, 0.24)");
-    ctx.fillStyle = cityGlow;
-    ctx.fillRect(-40, horizonY - 85, viewW + 80, 97);
+    // Sun + Volumetric Lens Flare (Day & Golden Sunset)
+    if (atmo.sunAlpha > 0.05) {
+      const sunX = viewW * 0.5 + viewW * 0.2 * (1 - atmo.sunsetAlpha);
+      const sunY = horizonY * (0.28 + atmo.sunsetAlpha * 0.56);
+      const sunR = 115 + atmo.sunsetAlpha * 55;
+      const sunGrad = ctx.createRadialGradient(sunX, sunY, 6, sunX, sunY, sunR);
+      sunGrad.addColorStop(0, `rgba(255, 252, 235, ${atmo.sunAlpha})`);
+      sunGrad.addColorStop(0.22, `rgba(253, 224, 71, ${0.55 * atmo.sunAlpha})`);
+      sunGrad.addColorStop(0.55, `rgba(251, 146, 60, ${0.22 * atmo.sunAlpha})`);
+      sunGrad.addColorStop(1, "rgba(251, 146, 60, 0)");
+      ctx.fillStyle = sunGrad;
+      ctx.beginPath();
+      ctx.arc(sunX, sunY, sunR, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
-    // Parallax Distant Mega-Skyscraper Skyline (shifts slightly with curves!)
-    const parallax = (-roadCurve(worldZ) * 45) % 48;
+    // Moon with atmospheric halo (Night)
+    if (atmo.nightAlpha > 0.15) {
+      const moonX = viewW * 0.82;
+      const moonY = horizonY * 0.28;
+      const moonHalo = ctx.createRadialGradient(moonX, moonY, 5, moonX, moonY, 76);
+      moonHalo.addColorStop(0, `rgba(248, 250, 252, ${0.9 * atmo.nightAlpha})`);
+      moonHalo.addColorStop(0.22, `rgba(226, 232, 240, ${0.25 * atmo.nightAlpha})`);
+      moonHalo.addColorStop(1, "rgba(226, 232, 240, 0)");
+      ctx.fillStyle = moonHalo;
+      ctx.beginPath();
+      ctx.arc(moonX, moonY, 76, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Drifting Volumetric Clouds (Day & Sunset)
+    if (atmo.sunAlpha > 0.1) {
+      ctx.save();
+      for (const cl of clouds) {
+        const cx = (cl.x * viewW) - 80;
+        const cy = cl.y * horizonY * 1.4;
+        ctx.fillStyle = atmo.sunsetAlpha > 0.4
+          ? `rgba(253, 186, 116, ${0.38 * atmo.sunAlpha})`
+          : `rgba(255, 255, 255, ${0.58 * atmo.sunAlpha})`;
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, cl.w * 0.5, cl.h * 0.5, 0, 0, Math.PI * 2);
+        ctx.ellipse(cx - cl.w * 0.25, cy + 4, cl.w * 0.34, cl.h * 0.42, 0, 0, Math.PI * 2);
+        ctx.ellipse(cx + cl.w * 0.26, cy + 3, cl.w * 0.32, cl.h * 0.42, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    // Manhattan horizon atmospheric haze
+    const cityGlow = ctx.createLinearGradient(0, horizonY - 95, 0, horizonY + 12);
+    cityGlow.addColorStop(0, "rgba(251, 146, 60, 0)");
+    cityGlow.addColorStop(0.65, `rgba(251, 191, 36, ${0.14 + atmo.sunsetAlpha * 0.18})`);
+    cityGlow.addColorStop(1, `rgba(226, 232, 240, ${0.15 + atmo.sunAlpha * 0.14})`);
+    ctx.fillStyle = cityGlow;
+    ctx.fillRect(-40, horizonY - 95, viewW + 80, 107);
+
+    // Distant Manhattan Skyline
     const step = 36;
-    for (let sx = -72 + parallax; sx < viewW + 72; sx += step) {
+    for (let sx = -36; sx < viewW + 36; sx += step) {
       const idx = Math.round(sx / step);
       const h = 34 + Math.abs(Math.sin(idx * 1.73)) * 78;
-      ctx.fillStyle = "#080c1c";
+      ctx.fillStyle = atmo.nightAlpha > 0.5 ? "#080d1c" : atmo.sunsetAlpha > 0.4 ? "#231b35" : "#476082";
       ctx.fillRect(sx, horizonY - h, step - 3, h + 14);
-      // Spire on tall towers
-      if (h > 85) {
-        ctx.fillStyle = "#1e293b";
-        ctx.fillRect(sx + step * 0.45, horizonY - h - 22, 2, 22);
-      }
-      // Subtle skyline windows
-      ctx.fillStyle = idx % 2 === 0 ? "rgba(56, 189, 248, 0.35)" : "rgba(251, 191, 36, 0.32)";
-      for (let wy = horizonY - h + 8; wy < horizonY - 4; wy += 9) {
-        if (((idx * 7 + wy) % 5) < 2) ctx.fillRect(sx + 6, wy, 4, 3);
-        if (((idx * 11 + wy) % 5) < 2) ctx.fillRect(sx + 18, wy, 4, 3);
+      if (atmo.nightAlpha > 0.25) {
+        ctx.fillStyle = idx % 2 === 0
+          ? `rgba(253, 224, 120, ${0.38 * atmo.nightAlpha})`
+          : `rgba(125, 211, 252, ${0.34 * atmo.nightAlpha})`;
+        for (let wy = horizonY - h + 8; wy < horizonY - 4; wy += 9) {
+          if (((idx * 7 + wy) % 5) < 2) ctx.fillRect(sx + 6, wy, 4, 3);
+          if (((idx * 11 + wy) % 5) < 2) ctx.fillRect(sx + 18, wy, 4, 3);
+        }
       }
     }
+
+    // === ICONIC NYC LANDMARKS IN SKYLINE ===
+    const towerShade = atmo.nightAlpha > 0.5 ? "#0b1326" : atmo.sunsetAlpha > 0.4 ? "#261c38" : "#435d82";
+
+    // 1. Empire State Building
+    const esbX = viewW * 0.32;
+    const esbH = Math.min(185, horizonY * 0.78);
+    ctx.fillStyle = towerShade;
+    ctx.fillRect(esbX - 22, horizonY - esbH * 0.55, 44, esbH * 0.55 + 10);
+    ctx.fillRect(esbX - 14, horizonY - esbH * 0.8, 28, esbH * 0.28);
+    ctx.fillRect(esbX - 8, horizonY - esbH * 0.92, 16, esbH * 0.14);
+    ctx.fillStyle = atmo.nightAlpha > 0.3 ? "#38bdf8" : "#cbd5e1";
+    ctx.fillRect(esbX - 7, horizonY - esbH * 0.92, 14, 5);
+    ctx.fillStyle = "#e2e8f0";
+    ctx.fillRect(esbX - 1.5, horizonY - esbH - 22, 3, 28);
+    if (Math.floor(performance.now() / 550) % 2 === 0) {
+      ctx.fillStyle = "#ef4444";
+      ctx.beginPath();
+      ctx.arc(esbX, horizonY - esbH - 22, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 2. One World Trade Center
+    const wtcX = viewW * 0.68;
+    const wtcH = Math.min(198, horizonY * 0.82);
+    const wtcGrad = ctx.createLinearGradient(wtcX - 18, horizonY - wtcH, wtcX + 18, horizonY);
+    wtcGrad.addColorStop(0, atmo.sunAlpha > 0.3 ? "#7dd3fc" : "#1e3a5f");
+    wtcGrad.addColorStop(1, towerShade);
+    ctx.fillStyle = wtcGrad;
+    ctx.beginPath();
+    ctx.moveTo(wtcX - 19, horizonY + 8);
+    ctx.lineTo(wtcX - 11, horizonY - wtcH);
+    ctx.lineTo(wtcX + 11, horizonY - wtcH);
+    ctx.lineTo(wtcX + 19, horizonY + 8);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#e2e8f0";
+    ctx.fillRect(wtcX - 1.2, horizonY - wtcH - 30, 2.4, 30);
+
+    // 3. Chrysler Building
+    const chX = viewW * 0.16;
+    const chH = Math.min(148, horizonY * 0.64);
+    ctx.fillStyle = towerShade;
+    ctx.fillRect(chX - 13, horizonY - chH * 0.78, 26, chH * 0.78 + 8);
+    for (let t = 0; t < 4; t++) {
+      ctx.beginPath();
+      ctx.arc(chX, horizonY - chH * 0.78 - t * 6, 12 - t * 2.4, Math.PI, 0);
+      ctx.strokeStyle = atmo.nightAlpha > 0.3 ? "rgba(253, 230, 138, 0.5)" : "rgba(241, 245, 249, 0.7)";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+    ctx.fillRect(chX - 1, horizonY - chH - 14, 2, 22);
   }
 
-  function drawAsphaltSkyscraper(x, y, scale, sideDir, seed, fogAlpha, rowLayer) {
-    const mult = rowLayer === 2 ? 1.45 : 1.0;
-    const bw = (94 + (seed % 3) * 32) * scale * mult;
-    const bh = (210 + (seed % 5) * 58) * scale * mult;
-    const depth = (46 + (seed % 2) * 18) * scale * mult;
+  function drawAsphaltSkyscraper(x, y, scale, sideDir, seed, fogAlpha, rowLayer, atmo) {
+    // atmo can be null in top-down view — fall back to a neutral day-time look
+    if (!atmo) atmo = { nightAlpha: 0, sunAlpha: 1, sunsetAlpha: 0, bldgTop: "rgb(100,128,165)", bldgBot: "rgb(51,65,85)" };
+    const mult = rowLayer === 2 ? 1.48 : 1.0;
+    const bw = (98 + (seed % 3) * 32) * scale * mult;
+    const bh = (220 + (seed % 5) * 60) * scale * mult;
+    const depth = (48 + (seed % 2) * 18) * scale * mult;
     if (bw < 4 || bh < 6) return;
 
     const topY = y - bh;
     const frontX = sideDir < 0 ? x - bw : x;
-    const neonPalette = ["#00f3ff", "#ff2a85", "#fbbf24", "#38bdf8", "#c084fc"];
-    const accent = neonPalette[seed % neonPalette.length];
+    const nycColors = ["#facc15", "#00f3ff", "#ff2a85", "#fb923c", "#38bdf8"];
+    const accent = nycColors[seed % nycColors.length];
 
     ctx.save();
     ctx.globalAlpha = Math.max(0.18, 1 - fogAlpha * 0.82);
 
-    // 3D side wall facing the highway
-    ctx.fillStyle = rowLayer === 2 ? "#060914" : "#090f1f";
+    // 3D side wall (shaded for realistic sun direction)
+    ctx.fillStyle = atmo.nightAlpha > 0.5 ? (rowLayer === 2 ? "#070b16" : "#0b1122") : atmo.bldgBot;
     ctx.beginPath();
     if (sideDir < 0) {
       ctx.moveTo(frontX + bw, topY);
@@ -826,71 +1055,91 @@
     ctx.closePath();
     ctx.fill();
 
-    // Front glass curtain-wall skyscraper
+    // High-contrast Manhattan Glass & Limestone Skyscraper Facade
     const facade = ctx.createLinearGradient(frontX, topY, frontX, y);
-    facade.addColorStop(0, rowLayer === 2 ? "#16203a" : "#1e2a4a");
-    facade.addColorStop(0.55, "#0f172a");
-    facade.addColorStop(1, "#070b16");
+    facade.addColorStop(0, atmo.bldgTop);
+    facade.addColorStop(1, atmo.bldgBot);
     ctx.fillStyle = facade;
     ctx.fillRect(frontX, topY, bw, bh);
 
-    // Glossy diagonal sky reflection across glass tower
-    ctx.fillStyle = "rgba(186, 230, 253, 0.08)";
+    // Glossy Sky Reflection on Glass Tower
+    ctx.fillStyle = atmo.sunAlpha > 0.3 ? "rgba(255, 255, 255, 0.18)" : "rgba(186, 230, 253, 0.09)";
     ctx.beginPath();
-    ctx.moveTo(frontX, topY + bh * 0.18);
+    ctx.moveTo(frontX, topY + bh * 0.16);
     ctx.lineTo(frontX + bw, topY);
     ctx.lineTo(frontX + bw, topY + bh * 0.42);
-    ctx.lineTo(frontX, topY + bh * 0.6);
+    ctx.lineTo(frontX, topY + bh * 0.58);
     ctx.closePath();
     ctx.fill();
 
-    // Vertical architectural LED light fin (signature Asphalt Legends skyline look!)
-    ctx.fillStyle = accent;
-    ctx.fillRect(sideDir < 0 ? frontX + bw - 3 * scale : frontX, topY, Math.max(1.2, 3 * scale), bh);
-    ctx.fillRect(frontX, topY, bw, Math.max(1.2, 3 * scale));
-
-    // Lit architectural office grid
-    const floors = 10;
+    // Architectural window grid (reflective glass in Day, glowing warm/cool lights at Night!)
+    const floors = 11;
     const cols = 4;
     const padX = bw * 0.1;
     const cellW = (bw - padX * 2) / cols;
     const floorH = bh / floors;
-    for (let r = 0; r < floors; r++) {
+    for (let r = 0; r < floors - 1; r++) {
       for (let c = 0; c < cols; c++) {
-        const h = (seed + r * 11 + c * 7) % 10;
-        if (h < 4) {
-          ctx.fillStyle = h <= 1 ? "rgba(253, 224, 130, 0.78)" : "rgba(125, 211, 252, 0.6)";
-          ctx.fillRect(
-            frontX + padX + c * cellW + cellW * 0.12,
-            topY + r * floorH + floorH * 0.24,
-            cellW * 0.74,
-            floorH * 0.5
-          );
+        const h = (seed + r * 11 + c * 7) % 9;
+        if (atmo.nightAlpha > 0.35 && h < 4) {
+          ctx.fillStyle = h <= 1 ? "rgba(253, 224, 130, 0.85)" : "rgba(147, 197, 253, 0.65)";
+        } else {
+          ctx.fillStyle = atmo.sunAlpha > 0.4
+            ? (h % 2 === 0 ? "rgba(224, 242, 254, 0.48)" : "rgba(30, 58, 95, 0.55)")
+            : "rgba(15, 23, 42, 0.7)";
         }
+        ctx.fillRect(
+          frontX + padX + c * cellW + cellW * 0.12,
+          topY + r * floorH + floorH * 0.22,
+          cellW * 0.74,
+          floorH * 0.52
+        );
       }
     }
 
-    // Giant Glowing Metropolis Billboard on front-row towers
-    if (rowLayer === 1 && seed % 3 === 0 && scale > 0.14) {
-      const bbw = bw * 0.82;
-      const bbh = bh * 0.16;
-      const bbx = frontX + bw * 0.09;
-      const bby = topY + bh * 0.34;
-      ctx.fillStyle = "#040712";
-      ctx.strokeStyle = accent;
-      ctx.lineWidth = Math.max(1, 2 * scale);
+    // Ground-level NYC retail storefronts & awnings
+    if (rowLayer === 1 && scale > 0.14) {
+      const shopH = bh * 0.11;
+      ctx.fillStyle = atmo.nightAlpha > 0.35 ? "rgba(251, 191, 36, 0.78)" : "rgba(30, 41, 59, 0.82)";
+      ctx.fillRect(frontX + bw * 0.08, y - shopH, bw * 0.84, shopH * 0.85);
+      if (seed % 2 === 0) {
+        const sx = sideDir < 0 ? frontX + bw + 5 * scale : frontX - 5 * scale;
+        ctx.fillStyle = "#22c55e";
+        ctx.beginPath();
+        ctx.arc(sx, y - 18 * scale, Math.max(1.5, 4 * scale), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // Giant Times Square Animated LED Jumbotrons on front-row towers
+    if (rowLayer === 1 && seed % 2 === 0 && scale > 0.13) {
+      const bbw = bw * 0.86;
+      const bbh = bh * 0.19;
+      const bbx = frontX + bw * 0.07;
+      const bby = topY + bh * 0.42;
+
+      const jbGrad = ctx.createLinearGradient(bbx, bby, bbx + bbw, bby + bbh);
+      jbGrad.addColorStop(0, "#090d1f");
+      jbGrad.addColorStop(0.5, accent);
+      jbGrad.addColorStop(1, "#1e1b4b");
+      ctx.fillStyle = jbGrad;
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = Math.max(1, 1.8 * scale);
       ctx.fillRect(bbx, bby, bbw, bbh);
       ctx.strokeRect(bbx, bby, bbw, bbh);
-      if (scale > 0.22) {
-        ctx.fillStyle = accent;
-        ctx.font = `bold ${Math.max(7, Math.round(14 * scale))}px monospace`;
+
+      if (scale > 0.2) {
+        ctx.fillStyle = "#ffffff";
+        ctx.font = `bold ${Math.max(7, Math.round(13 * scale))}px monospace`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillText(BILLBOARD_TITLES[seed % BILLBOARD_TITLES.length], bbx + bbw * 0.5, bby + bbh * 0.5);
       }
     }
 
-    // Rooftop spire + blinking beacon
+    // Rooftop parapet & water tower / spire
+    ctx.fillStyle = "#334155";
+    ctx.fillRect(frontX, topY, bw, Math.max(1.5, 3 * scale));
     if (seed % 2 === 0 && scale > 0.16) {
       const antX = frontX + bw * 0.5;
       ctx.strokeStyle = "#64748b";
@@ -905,6 +1154,176 @@
         ctx.arc(antX, topY - 26 * scale, Math.max(1.5, 3 * scale), 0, Math.PI * 2);
         ctx.fill();
       }
+    }
+
+    ctx.restore();
+  }
+
+  function drawBrooklynBridgeTower(z, proj, slices) {
+    const pL = projectCurved3D(-1.22, z, 0, proj, slices);
+    const pR = projectCurved3D(1.22, z, 0, proj, slices);
+    const s = pL.scale;
+    if (s < 0.08 || s > 1.35) return;
+
+    const towerH = 260 * s;
+    const towerW = 36 * s;
+    const topY = pL.y - towerH;
+
+    ctx.save();
+    // Gothic stone twin bridge towers
+    [pL.x, pR.x].forEach((tx, idx) => {
+      const x0 = idx === 0 ? tx - towerW : tx;
+      ctx.fillStyle = "#475569";
+      ctx.strokeStyle = "#1e293b";
+      ctx.lineWidth = Math.max(1, 2 * s);
+      ctx.fillRect(x0, topY, towerW, towerH);
+      ctx.strokeRect(x0, topY, towerW, towerH);
+
+      // Gothic pointed arches inside stone tower
+      ctx.fillStyle = "#090e1c";
+      ctx.beginPath();
+      ctx.roundRect(x0 + towerW * 0.25, topY + towerH * 0.18, towerW * 0.5, towerH * 0.34, 8 * s);
+      ctx.fill();
+
+      // Tower crown lamps
+      ctx.fillStyle = "#fde047";
+      ctx.beginPath();
+      ctx.arc(x0 + towerW * 0.5, topY - 4 * s, Math.max(1.5, 3.5 * s), 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    // Overhead bridge arch & steel suspension cables
+    ctx.fillStyle = "#334155";
+    ctx.fillRect(pL.x - towerW, topY + towerH * 0.15, pR.x - pL.x + towerW * 2, 14 * s);
+
+    ctx.strokeStyle = "rgba(203, 213, 225, 0.55)";
+    ctx.lineWidth = Math.max(1, 1.8 * s);
+    for (let k = -0.8; k <= 0.8; k += 0.32) {
+      const roadPt = projectCurved3D(k, z, 0, proj, slices);
+      ctx.beginPath();
+      ctx.moveTo(k < 0 ? pL.x - towerW * 0.5 : pR.x + towerW * 0.5, topY + 6 * s);
+      ctx.lineTo(roadPt.x, roadPt.y);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawFlyoverBridge(z, proj, slices, idx) {
+    const pNearL = projectCurved3D(-1.05, Math.max(0, z - 44), 0, proj, slices);
+    const pNearR = projectCurved3D(1.05, Math.max(0, z - 44), 0, proj, slices);
+    const pFarL = projectCurved3D(-1.05, z + 44, 0, proj, slices);
+    const pFarR = projectCurved3D(1.05, z + 44, 0, proj, slices);
+
+    const s = pNearL.scale;
+    if (s < 0.08 || s > 1.5) return;
+
+    ctx.save();
+    // Realistic cast shadow across highway below
+    ctx.fillStyle = "rgba(0, 0, 0, 0.52)";
+    ctx.beginPath();
+    ctx.moveTo(pFarL.x, pFarL.y);
+    ctx.lineTo(pFarR.x, pFarR.y);
+    ctx.lineTo(pNearR.x, pNearR.y);
+    ctx.lineTo(pNearL.x, pNearL.y);
+    ctx.closePath();
+    ctx.fill();
+
+    // Concrete piers on shoulders & outer lanes
+    const deckH = 122 * s;
+    const deckThick = 28 * s;
+    const spanL = projectCurved3D(-2.9, z, 0, proj, slices);
+    const spanR = projectCurved3D(2.9, z, 0, proj, slices);
+    const deckY = spanL.y - deckH;
+
+    [-1.18, 1.18, -2.0, 2.0].forEach((px) => {
+      const pier = projectCurved3D(px, z, 0, proj, slices);
+      const pw = 24 * pier.scale;
+      ctx.fillStyle = "#1e293b";
+      ctx.fillRect(pier.x - pw * 0.5, pier.y - deckH, pw, deckH);
+      ctx.fillStyle = "#334155";
+      ctx.fillRect(pier.x - pw * 0.5, pier.y - deckH, pw * 0.35, deckH);
+    });
+
+    // 3D Underside shadow girder + glowing LED underpass ceiling strips!
+    ctx.fillStyle = "#090e1a";
+    ctx.fillRect(spanL.x, deckY + deckThick * 0.72, spanR.x - spanL.x, deckThick * 0.52);
+
+    const lightSpanW = pNearR.x - pNearL.x;
+    for (let u = 0.15; u <= 0.85; u += 0.35) {
+      ctx.fillStyle = "rgba(253, 224, 130, 0.75)";
+      ctx.fillRect(pNearL.x + lightSpanW * u - 14 * s, deckY + deckThick * 0.82, 28 * s, Math.max(1.5, 4 * s));
+    }
+
+    const deckGrad = ctx.createLinearGradient(0, deckY, 0, deckY + deckThick);
+    deckGrad.addColorStop(0, "#64748b");
+    deckGrad.addColorStop(0.45, "#334155");
+    deckGrad.addColorStop(1, "#1e293b");
+    ctx.fillStyle = deckGrad;
+    ctx.fillRect(spanL.x, deckY, spanR.x - spanL.x, deckThick);
+
+    // Steel truss arch above flyover deck
+    ctx.strokeStyle = "#475569";
+    ctx.lineWidth = Math.max(1.2, 3 * s);
+    ctx.beginPath();
+    ctx.moveTo(pNearL.x - 40 * s, deckY - 6 * s);
+    ctx.quadraticCurveTo((pNearL.x + pNearR.x) * 0.5, deckY - 58 * s, pNearR.x + 40 * s, deckY - 6 * s);
+    ctx.stroke();
+
+    // Top concrete parapet railing
+    ctx.fillStyle = "#94a3b8";
+    ctx.fillRect(spanL.x, deckY - 7 * s, spanR.x - spanL.x, 7 * s);
+
+    // NYC Expressway Green Sign + Yellow Clearance Badge mounted on Flyover
+    const midX = (pNearL.x + pNearR.x) * 0.5;
+    if (s > 0.16) {
+      ctx.fillStyle = "#065f46";
+      ctx.strokeStyle = "#e2e8f0";
+      ctx.lineWidth = Math.max(1, 1.5 * s);
+      ctx.fillRect(midX - 78 * s, deckY + 3 * s, 96 * s, 21 * s);
+      ctx.strokeRect(midX - 78 * s, deckY + 3 * s, 96 * s, 21 * s);
+
+      ctx.fillStyle = "#facc15";
+      ctx.fillRect(midX + 24 * s, deckY + 6 * s, 54 * s, 15 * s);
+      if (s > 0.24) {
+        ctx.fillStyle = "#f8fafc";
+        ctx.font = `bold ${Math.max(7, Math.round(9.5 * s))}px monospace`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("FDR EXPRESSWAY", midX - 30 * s, deckY + 13.5 * s);
+        ctx.fillStyle = "#090d16";
+        ctx.font = `bold ${Math.max(7, Math.round(8.5 * s))}px monospace`;
+        ctx.fillText("14FT 6IN", midX + 51 * s, deckY + 13.5 * s);
+      }
+    }
+
+    // Animated cross-traffic vehicles driving across the top of the flyover!
+    const tNow = performance.now() * 0.001;
+    const spanW = spanR.x - spanL.x;
+    for (let c = 0; c < 3; c++) {
+      const dir = c % 2 === 0 ? 1 : -1;
+      const frac = ((tNow * (0.14 + c * 0.05) + idx * 0.31 + c * 0.37) % 1);
+      const cx = dir > 0 ? spanL.x + frac * spanW : spanR.x - frac * spanW;
+      const cy = deckY - 6 * s;
+      ctx.fillStyle = "#0f172a";
+      ctx.fillRect(cx - 16 * s, cy - 11 * s, 32 * s, 11 * s);
+      ctx.fillStyle = "#f8fafc";
+      ctx.fillRect(dir > 0 ? cx + 12 * s : cx - 16 * s, cy - 8 * s, 5 * s, 4 * s);
+      ctx.fillStyle = "#ef4444";
+      ctx.fillRect(dir > 0 ? cx - 16 * s : cx + 12 * s, cy - 8 * s, 5 * s, 4 * s);
+    }
+
+    // Streetlamps along top of flyover
+    for (let lx = spanL.x + 60 * s; lx < spanR.x - 40 * s; lx += 160 * s) {
+      ctx.strokeStyle = "#64748b";
+      ctx.lineWidth = Math.max(1, 2 * s);
+      ctx.beginPath();
+      ctx.moveTo(lx, deckY - 6 * s);
+      ctx.lineTo(lx, deckY - 26 * s);
+      ctx.stroke();
+      ctx.fillStyle = "rgba(253, 224, 130, 0.7)";
+      ctx.beginPath();
+      ctx.arc(lx, deckY - 26 * s, Math.max(1.5, 3 * s), 0, Math.PI * 2);
+      ctx.fill();
     }
 
     ctx.restore();
@@ -1043,209 +1462,319 @@
     ctx.restore();
   }
 
-  // ==================== REALISTIC 3D MULTI-PART CARS ====================
+  // ==================== TRUE 3D MULTI-FACE PROJECTED CARS ====================
   function draw3DCarPersp(car, proj, slices, isPlayer, lightMode) {
     const elev = isPlayer && run ? run.player.jumpY : 0;
-    const pGround = projectCurved3D(car.xNorm, car.z, 0, proj, slices);
-    const pPos = projectCurved3D(car.xNorm, car.z, elev, proj, slices);
-    const s = pPos.scale;
-    if (s <= 0.05) return;
+    const pRearC = projectCurved3D(car.xNorm, car.z, elev, proj, slices);
+    const s = pRearC.scale;
+    if (s <= 0.04) return;
 
-    const cw = car.wNorm * proj.roadHalfBottom * s;
-    const ch = (car.kind === "truck" ? 72 : car.kind === "mahindra" ? 50 : 35) * s;
-    const cx = pPos.x;
-    const cy = pPos.y;
-    const roll = isPlayer && run ? run.player.bodyRoll : 0;
+    const hw = car.wNorm * 0.5;
+    const lenZ = car.kind === "truck" ? 105 : 68;
+    const bodyH = car.kind === "truck" ? 56 : car.kind === "mahindra" ? 38 : car.kind === "lambo" ? 24 : 29;
+    const z0 = car.z;
+    const z1 = car.z + lenZ;
 
-    // Ground shadow stays on asphalt even when car jumps!
+    // Project 3D ground corners for shadow
+    const gRL = projectCurved3D(car.xNorm - hw * 1.08, z0, 0, proj, slices);
+    const gRR = projectCurved3D(car.xNorm + hw * 1.08, z0, 0, proj, slices);
+    const gFL = projectCurved3D(car.xNorm - hw * 1.08, z1, 0, proj, slices);
+    const gFR = projectCurved3D(car.xNorm + hw * 1.08, z1, 0, proj, slices);
+
     ctx.save();
+    // 1. 3D Ground Shadow Polygon
     ctx.fillStyle = `rgba(0, 0, 0, ${Math.max(0.25, 0.78 - elev * 0.008)})`;
     ctx.beginPath();
-    ctx.ellipse(pGround.x, pGround.y + 3 * pGround.scale, cw * 0.56, 9 * pGround.scale, 0, 0, Math.PI * 2);
+    ctx.moveTo(gRL.x, gRL.y + 3 * gRL.scale);
+    ctx.lineTo(gRR.x, gRR.y + 3 * gRR.scale);
+    ctx.lineTo(gFR.x, gFR.y + 3 * gFR.scale);
+    ctx.lineTo(gFL.x, gFL.y + 3 * gFL.scale);
+    ctx.closePath();
     ctx.fill();
-    ctx.restore();
 
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(roll);
-
-    // Ambient red taillight reflection on asphalt
-    if (elev < 10) {
-      const tailGlow = ctx.createRadialGradient(0, 4 * s, 2 * s, 0, 8 * s, cw * 0.65);
-      tailGlow.addColorStop(0, "rgba(220, 38, 38, 0.34)");
-      tailGlow.addColorStop(1, "rgba(220, 38, 38, 0)");
-      ctx.fillStyle = tailGlow;
-      ctx.fillRect(-cw * 0.65, -4 * s, cw * 1.3, 24 * s);
+    // 2. Volumetric 3D Headlight Beams ahead of front bumper
+    if (isPlayer && lightMode !== "OFF") {
+      const beamLen = lightMode === "HIGH" ? 340 : 190;
+      const bFL = projectCurved3D(car.xNorm - hw * 0.8, z1, elev * 0.3, proj, slices);
+      const bFR = projectCurved3D(car.xNorm + hw * 0.8, z1, elev * 0.3, proj, slices);
+      const bEndL = projectCurved3D(car.xNorm - hw * (lightMode === "HIGH" ? 2.1 : 1.45), z1 + beamLen, 0, proj, slices);
+      const bEndR = projectCurved3D(car.xNorm + hw * (lightMode === "HIGH" ? 2.1 : 1.45), z1 + beamLen, 0, proj, slices);
+      const cone = ctx.createLinearGradient(0, bFL.y, 0, bEndL.y);
+      cone.addColorStop(0, lightMode === "HIGH" ? "rgba(240, 249, 255, 0.52)" : "rgba(240, 249, 255, 0.28)");
+      cone.addColorStop(0.4, lightMode === "HIGH" ? "rgba(186, 230, 253, 0.22)" : "rgba(186, 230, 253, 0.1)");
+      cone.addColorStop(1, "rgba(148, 210, 255, 0)");
+      ctx.fillStyle = cone;
+      ctx.beginPath();
+      ctx.moveTo(bFL.x, bFL.y);
+      ctx.lineTo(bEndL.x, bEndL.y);
+      ctx.lineTo(bEndR.x, bEndR.y);
+      ctx.lineTo(bFR.x, bFR.y);
+      ctx.closePath();
+      ctx.fill();
     }
 
-    // Wide rear tires
-    ctx.fillStyle = "#040507";
-    ctx.fillRect(-cw * 0.51, -11 * s, cw * 0.17, 13 * s);
-    ctx.fillRect(cw * 0.34, -11 * s, cw * 0.17, 13 * s);
+    // Project 3D Body Cage Vertices
+    const rollShift = isPlayer && run ? run.player.bodyRoll * 18 : 0;
+    const rbL = projectCurved3D(car.xNorm - hw, z0, elev + 2, proj, slices);
+    const rbR = projectCurved3D(car.xNorm + hw, z0, elev + 2, proj, slices);
+    const fbL = projectCurved3D(car.xNorm - hw * 0.96, z1, elev + 2, proj, slices);
+    const fbR = projectCurved3D(car.xNorm + hw * 0.96, z1, elev + 2, proj, slices);
 
-    if (isPlayer) {
-      // Headlight beams
-      if (lightMode !== "OFF") {
-        const len = (lightMode === "HIGH" ? 250 : 140) * s;
-        const spread = lightMode === "HIGH" ? cw * 1.55 : cw * 1.1;
-        const grad = ctx.createLinearGradient(0, -ch * 0.35, 0, -ch * 0.35 - len);
-        grad.addColorStop(0, lightMode === "HIGH" ? "rgba(240, 249, 255, 0.54)" : "rgba(240, 249, 255, 0.3)");
-        grad.addColorStop(0.35, lightMode === "HIGH" ? "rgba(186, 230, 253, 0.25)" : "rgba(186, 230, 253, 0.12)");
-        grad.addColorStop(1, "rgba(148, 210, 255, 0)");
-        ctx.fillStyle = grad;
+    const beltH = elev + bodyH * (car.kind === "truck" ? 0.98 : 0.56);
+    const frontBeltH = elev + bodyH * (car.kind === "truck" ? 0.98 : 0.44);
+    const rmL = projectCurved3D(car.xNorm - hw * 0.96, z0, beltH, proj, slices);
+    const rmR = projectCurved3D(car.xNorm + hw * 0.96, z0, beltH, proj, slices);
+    const fmL = projectCurved3D(car.xNorm - hw * 0.9, z1, frontBeltH, proj, slices);
+    const fmR = projectCurved3D(car.xNorm + hw * 0.9, z1, frontBeltH, proj, slices);
+
+    const roofW = car.kind === "truck" ? hw * 0.92 : hw * 0.72;
+    const roofZ0 = car.kind === "truck" ? z0 + 2 : z0 + lenZ * 0.22;
+    const roofZ1 = car.kind === "truck" ? z1 - 4 : z0 + lenZ * 0.64;
+    const rrL = projectCurved3D(car.xNorm - roofW, roofZ0, elev + bodyH, proj, slices);
+    const rrR = projectCurved3D(car.xNorm + roofW, roofZ0, elev + bodyH, proj, slices);
+    const frL = projectCurved3D(car.xNorm - roofW, roofZ1, elev + bodyH, proj, slices);
+    const frR = projectCurved3D(car.xNorm + roofW, roofZ1, elev + bodyH, proj, slices);
+
+    const cbL = projectCurved3D(car.xNorm - hw * 0.85, z0 + lenZ * 0.76, elev + bodyH * 0.5, proj, slices);
+    const cbR = projectCurved3D(car.xNorm + hw * 0.85, z0 + lenZ * 0.76, elev + bodyH * 0.5, proj, slices);
+
+    // Subtle body-roll lean on upper cabin
+    [rmL, rmR, rrL, rrR, frL, frR].forEach((pt) => {
+      pt.x += rollShift * pt.scale;
+    });
+
+    // Color palette (Stealth Black for player, realistic metallic for traffic)
+    const sideColor = isPlayer ? "#0c111a" : car.bodyColor;
+    const topColor = isPlayer ? "#1e2736" : car.bodyHi;
+    const rearDark = isPlayer ? "#05070b" : car.bodyColor;
+    const rearMid = isPlayer ? "#2d384a" : car.bodyHi;
+
+    // 3. Draw Visible 3D Side Panel + Wheels + Side Windows
+    const sideDiff = car.xNorm - proj.camX;
+    if (Math.abs(sideDiff) > 0.03) {
+      const showRight = sideDiff < 0;
+      const sRB = showRight ? rbR : rbL;
+      const sFB = showRight ? fbR : fbL;
+      const sRM = showRight ? rmR : rmL;
+      const sFM = showRight ? fmR : fmL;
+      const sRR = showRight ? rrR : rrL;
+      const sFR = showRight ? frR : frL;
+      const sCB = showRight ? cbR : cbL;
+      const sideXNorm = showRight ? car.xNorm + hw * 0.98 : car.xNorm - hw * 0.98;
+
+      // 3D Front & Rear Wheels on visible side
+      [z0 + lenZ * 0.18, z0 + lenZ * 0.78].forEach((wz) => {
+        const wPt = projectCurved3D(sideXNorm, wz, elev + 5, proj, slices);
+        ctx.fillStyle = "#040507";
         ctx.beginPath();
-        ctx.moveTo(-cw * 0.45, -ch * 0.35);
-        ctx.lineTo(-spread, -ch * 0.35 - len);
-        ctx.lineTo(spread, -ch * 0.35 - len);
-        ctx.lineTo(cw * 0.45, -ch * 0.35);
-        ctx.closePath();
+        ctx.ellipse(wPt.x, wPt.y, 4.5 * wPt.scale, 8 * wPt.scale, 0, 0, Math.PI * 2);
         ctx.fill();
-      }
+        // Metallic alloy rim center
+        ctx.fillStyle = "#94a3b8";
+        ctx.beginPath();
+        ctx.ellipse(wPt.x, wPt.y, 2.2 * wPt.scale, 4 * wPt.scale, 0, 0, Math.PI * 2);
+        ctx.fill();
+      });
 
-      // Glossy Sapphire-Black Metallic Paint
-      const paint = ctx.createLinearGradient(-cw * 0.5, -ch, cw * 0.5, 0);
-      paint.addColorStop(0, "#030407");
-      paint.addColorStop(0.24, "#1a2230");
-      paint.addColorStop(0.48, "#435169");
-      paint.addColorStop(0.75, "#151b26");
-      paint.addColorStop(1, "#020305");
-
-      ctx.fillStyle = "#080a0f";
+      // Side Body Door Panel
+      ctx.fillStyle = sideColor;
+      ctx.strokeStyle = "rgba(255,255,255,0.18)";
+      ctx.lineWidth = Math.max(0.8, 1.1 * s);
       ctx.beginPath();
-      ctx.roundRect(-cw * 0.49, -ch * 0.22, cw * 0.98, ch * 0.2, 4 * s);
-      ctx.fill();
-
-      ctx.fillStyle = paint;
-      ctx.strokeStyle = "rgba(226, 232, 240, 0.28)";
-      ctx.lineWidth = Math.max(1, 1.3 * s);
-      ctx.beginPath();
-      ctx.moveTo(-cw * 0.5, -ch * 0.18);
-      ctx.lineTo(-cw * 0.46, -ch * 0.56);
-      ctx.lineTo(cw * 0.46, -ch * 0.56);
-      ctx.lineTo(cw * 0.5, -ch * 0.18);
+      ctx.moveTo(sRB.x, sRB.y);
+      ctx.lineTo(sFB.x, sFB.y);
+      ctx.lineTo(sFM.x, sFM.y);
+      ctx.lineTo(sRM.x, sRM.y);
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
 
-      // Rear Windshield + C-Pillars
-      const glassGrad = ctx.createLinearGradient(-cw * 0.3, -ch, cw * 0.3, -ch * 0.55);
+      // Side Glass Window (non-truck)
+      if (car.kind !== "truck") {
+        ctx.fillStyle = "#0b1526";
+        ctx.beginPath();
+        ctx.moveTo(sRM.x, sRM.y);
+        ctx.lineTo(sCB.x, sCB.y);
+        ctx.lineTo(sFR.x, sFR.y);
+        ctx.lineTo(sRR.x, sRR.y);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+
+    // Rear tires (left & right bottom corners)
+    ctx.fillStyle = "#030406";
+    const tireW = Math.max(2, (rbR.x - rbL.x) * 0.17);
+    const tireH = Math.max(3, 10 * s);
+    ctx.fillRect(rbL.x - 1, rbL.y - tireH + 3 * s, tireW, tireH);
+    ctx.fillRect(rbR.x - tireW + 1, rbR.y - tireH + 3 * s, tireW, tireH);
+
+    // 4. 3D Hood + Roof + Rear Sloped Glass
+    if (car.kind !== "truck") {
+      // Hood
+      ctx.fillStyle = topColor;
+      ctx.beginPath();
+      ctx.moveTo(cbL.x, cbL.y);
+      ctx.lineTo(cbR.x, cbR.y);
+      ctx.lineTo(fmR.x, fmR.y);
+      ctx.lineTo(fmL.x, fmL.y);
+      ctx.closePath();
+      ctx.fill();
+
+      // Roof
+      ctx.fillStyle = topColor;
+      ctx.strokeStyle = "rgba(226, 232, 240, 0.25)";
+      ctx.lineWidth = Math.max(0.8, 1.1 * s);
+      ctx.beginPath();
+      ctx.moveTo(rrL.x, rrL.y);
+      ctx.lineTo(rrR.x, rrR.y);
+      ctx.lineTo(frR.x, frR.y);
+      ctx.lineTo(frL.x, frL.y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Sloped Rear Windshield
+      const glassGrad = ctx.createLinearGradient(0, rrL.y, 0, rmL.y);
       glassGrad.addColorStop(0, "#1e3a5f");
-      glassGrad.addColorStop(0.5, "#0b1322");
+      glassGrad.addColorStop(0.55, "#0b1322");
       glassGrad.addColorStop(1, "#04070e");
       ctx.fillStyle = glassGrad;
       ctx.beginPath();
-      ctx.moveTo(-cw * 0.41, -ch * 0.56);
-      ctx.lineTo(-cw * 0.3, -ch * 0.98);
-      ctx.lineTo(cw * 0.3, -ch * 0.98);
-      ctx.lineTo(cw * 0.41, -ch * 0.56);
+      ctx.moveTo(rmL.x + (rmR.x - rmL.x) * 0.08, rmL.y);
+      ctx.lineTo(rmR.x - (rmR.x - rmL.x) * 0.08, rmR.y);
+      ctx.lineTo(rrR.x, rrR.y);
+      ctx.lineTo(rrL.x, rrL.y);
       ctx.closePath();
       ctx.fill();
-      ctx.strokeStyle = "rgba(148, 163, 184, 0.35)";
       ctx.stroke();
+    } else {
+      // Truck Roof
+      ctx.fillStyle = "#475569";
+      ctx.beginPath();
+      ctx.moveTo(rmL.x, rmL.y);
+      ctx.lineTo(rmR.x, rmR.y);
+      ctx.lineTo(fmR.x, fmR.y);
+      ctx.lineTo(fmL.x, fmL.y);
+      ctx.closePath();
+      ctx.fill();
+    }
 
-      ctx.fillStyle = "#1e2636";
-      ctx.fillRect(-cw * 0.26, -ch * 1.0, cw * 0.52, 3.5 * s);
+    // 5. Sculpted 3D Rear Face (Trunk, Diffuser, License Plate, Brand LEDs)
+    const cw = rbR.x - rbL.x;
+    const rearH = rbL.y - rmL.y;
+    const rearGrad = ctx.createLinearGradient(rbL.x, 0, rbR.x, 0);
+    rearGrad.addColorStop(0, rearDark);
+    rearGrad.addColorStop(0.5, rearMid);
+    rearGrad.addColorStop(1, rearDark);
 
-      // Side mirrors
-      ctx.fillStyle = "#0f172a";
-      ctx.fillRect(-cw * 0.48, -ch * 0.66, 7 * s, 4.5 * s);
-      ctx.fillRect(cw * 0.48 - 7 * s, -ch * 0.66, 7 * s, 4.5 * s);
+    ctx.fillStyle = rearGrad;
+    ctx.strokeStyle = "rgba(226, 232, 240, 0.28)";
+    ctx.lineWidth = Math.max(0.9, 1.3 * s);
+    ctx.beginPath();
+    ctx.moveTo(rbL.x, rbL.y);
+    ctx.lineTo(rbR.x, rbR.y);
+    ctx.lineTo(rmR.x, rmR.y);
+    ctx.lineTo(rmL.x, rmL.y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
 
-      // License plate
-      ctx.fillStyle = "#e2e8f0";
-      ctx.fillRect(-cw * 0.14, -ch * 0.34, cw * 0.28, 6 * s);
-      ctx.fillStyle = "#0f172a";
-      ctx.fillRect(-cw * 0.12, -ch * 0.32, cw * 0.24, 2.5 * s);
+    // Red asphalt tailglow behind car
+    if (elev < 10) {
+      const midX = (rbL.x + rbR.x) * 0.5;
+      const tailGlow = ctx.createRadialGradient(midX, rbL.y + 3 * s, 2 * s, midX, rbL.y + 6 * s, cw * 0.65);
+      tailGlow.addColorStop(0, "rgba(220, 38, 38, 0.34)");
+      tailGlow.addColorStop(1, "rgba(220, 38, 38, 0)");
+      ctx.fillStyle = tailGlow;
+      ctx.fillRect(midX - cw * 0.65, rbL.y - 3 * s, cw * 1.3, 20 * s);
+    }
 
-      // Brand-specific LED taillights
+    // License Plate
+    ctx.fillStyle = "#e2e8f0";
+    ctx.fillRect(rbL.x + cw * 0.36, rmL.y + rearH * 0.36, cw * 0.28, Math.max(2, rearH * 0.25));
+
+    if (isPlayer) {
+      // Brand-accurate LED Taillights
       const braking = run ? run.player.braking : false;
       ctx.fillStyle = braking ? "#ff1744" : "#dc2626";
       ctx.shadowBlur = braking ? 20 * s : 11 * s;
       ctx.shadowColor = "#ff1744";
 
       if (car.kind === "bmw") {
-        ctx.fillRect(-cw * 0.45, -ch * 0.44, cw * 0.23, 4.5 * s);
-        ctx.fillRect(-cw * 0.45, -ch * 0.5, cw * 0.06, 9 * s);
-        ctx.fillRect(cw * 0.22, -ch * 0.44, cw * 0.23, 4.5 * s);
-        ctx.fillRect(cw * 0.39, -ch * 0.5, cw * 0.06, 9 * s);
+        ctx.fillRect(rmL.x + cw * 0.05, rmL.y + rearH * 0.2, cw * 0.24, Math.max(2, 4.5 * s));
+        ctx.fillRect(rmL.x + cw * 0.05, rmL.y + rearH * 0.08, Math.max(1.5, cw * 0.06), Math.max(3, 9 * s));
+        ctx.fillRect(rmR.x - cw * 0.29, rmR.y + rearH * 0.2, cw * 0.24, Math.max(2, 4.5 * s));
+        ctx.fillRect(rmR.x - cw * 0.11, rmR.y + rearH * 0.08, Math.max(1.5, cw * 0.06), Math.max(3, 9 * s));
       } else if (car.kind === "mercedes") {
-        ctx.fillRect(-cw * 0.44, -ch * 0.43, cw * 0.26, 3.8 * s);
-        ctx.fillRect(cw * 0.18, -ch * 0.43, cw * 0.26, 3.8 * s);
+        ctx.fillRect(rmL.x + cw * 0.06, rmL.y + rearH * 0.22, cw * 0.26, Math.max(2, 3.8 * s));
+        ctx.fillRect(rmR.x - cw * 0.32, rmR.y + rearH * 0.22, cw * 0.26, Math.max(2, 3.8 * s));
       } else if (car.kind === "lambo") {
-        ctx.fillRect(-cw * 0.46, -ch * 0.43, cw * 0.22, 4 * s);
-        ctx.fillRect(cw * 0.24, -ch * 0.43, cw * 0.22, 4 * s);
+        ctx.fillRect(rmL.x + cw * 0.05, rmL.y + rearH * 0.22, cw * 0.22, Math.max(2, 4 * s));
+        ctx.fillRect(rmR.x - cw * 0.27, rmR.y + rearH * 0.22, cw * 0.22, Math.max(2, 4 * s));
+        // Carbon rear spoiler
         ctx.shadowBlur = 0;
         ctx.fillStyle = "#05070a";
-        ctx.fillRect(-cw * 0.44, -ch * 0.62, cw * 0.88, 3.5 * s);
+        ctx.fillRect(rmL.x + cw * 0.06, rmL.y - 5 * s, cw * 0.88, 3.5 * s);
       } else if (car.kind === "mahindra") {
-        ctx.fillRect(-cw * 0.46, -ch * 0.54, cw * 0.11, ch * 0.28);
-        ctx.fillRect(cw * 0.35, -ch * 0.54, cw * 0.11, ch * 0.28);
+        ctx.fillRect(rmL.x + cw * 0.05, rmL.y + rearH * 0.1, cw * 0.11, rearH * 0.56);
+        ctx.fillRect(rmR.x - cw * 0.16, rmR.y + rearH * 0.1, cw * 0.11, rearH * 0.56);
       }
       ctx.shadowBlur = 0;
 
       // Quad chrome exhausts + Nitro flame bursts
       ctx.fillStyle = "#cbd5e1";
-      [-cw * 0.35, -cw * 0.25, cw * 0.21, cw * 0.31].forEach((ex) => {
+      [0.18, 0.28, 0.72, 0.82].forEach((f) => {
+        const ex = rbL.x + cw * f;
         ctx.beginPath();
-        ctx.arc(ex, -ch * 0.1, 2.5 * s, 0, Math.PI * 2);
+        ctx.arc(ex, rbL.y - 3 * s, Math.max(1.2, 2.4 * s), 0, Math.PI * 2);
         ctx.fill();
         if (run && run.player.boosting) {
           ctx.fillStyle = "#38bdf8";
           ctx.beginPath();
-          ctx.arc(ex, -ch * 0.06, (4 + Math.random() * 3) * s, 0, Math.PI * 2);
+          ctx.arc(ex, rbL.y - 1 * s, (4 + Math.random() * 3) * s, 0, Math.PI * 2);
           ctx.fill();
           ctx.fillStyle = "#cbd5e1";
         }
       });
 
+      // Hazard / Turn Blinkers
       const blink = Math.floor(performance.now() / 320) % 2 === 0;
       if (blink && (hazardOn || (run && run.player.turnDir !== 0))) {
         ctx.fillStyle = "#f59e0b";
-        if (hazardOn || (run && run.player.turnDir < 0)) ctx.fillRect(-cw * 0.48, -ch * 0.33, 5 * s, 4 * s);
-        if (hazardOn || (run && run.player.turnDir > 0)) ctx.fillRect(cw * 0.48 - 5 * s, -ch * 0.33, 5 * s, 4 * s);
+        if (hazardOn || (run && run.player.turnDir < 0)) ctx.fillRect(rmL.x + 2, rmL.y + rearH * 0.45, 5 * s, 4 * s);
+        if (hazardOn || (run && run.player.turnDir > 0)) ctx.fillRect(rmR.x - 5 * s - 2, rmR.y + rearH * 0.45, 5 * s, 4 * s);
       }
     } else {
-      const tGrad = ctx.createLinearGradient(-cw * 0.5, 0, cw * 0.5, 0);
-      tGrad.addColorStop(0, car.bodyColor);
-      tGrad.addColorStop(0.5, car.bodyHi);
-      tGrad.addColorStop(1, car.bodyColor);
-
-      ctx.fillStyle = tGrad;
-      ctx.strokeStyle = "rgba(255,255,255,0.2)";
-      ctx.lineWidth = Math.max(1, 1.2 * s);
-      ctx.beginPath();
-      ctx.roundRect(-cw * 0.5, -ch * 0.65, cw, ch * 0.62, 4 * s);
-      ctx.fill();
-      ctx.stroke();
-
-      if (car.kind === "truck") {
-        ctx.fillStyle = "#334155";
-        ctx.fillRect(-cw * 0.46, -ch * 1.15, cw * 0.92, ch * 0.52);
-        ctx.strokeStyle = "#94a3b8";
-        ctx.strokeRect(-cw * 0.46, -ch * 1.15, cw * 0.92, ch * 0.52);
-      } else {
-        ctx.fillStyle = "#0b1322";
-        ctx.beginPath();
-        ctx.moveTo(-cw * 0.38, -ch * 0.65);
-        ctx.lineTo(-cw * 0.28, -ch * 1.05);
-        ctx.lineTo(cw * 0.28, -ch * 1.05);
-        ctx.lineTo(cw * 0.38, -ch * 0.65);
-        ctx.closePath();
-        ctx.fill();
-      }
-
-      ctx.fillStyle = "#e2e8f0";
-      ctx.fillRect(-cw * 0.12, -ch * 0.34, cw * 0.24, 5 * s);
+      // Traffic Taillights
       ctx.fillStyle = car.honked > 0 ? "#f59e0b" : "#ef4444";
-      ctx.fillRect(-cw * 0.42, -ch * 0.44, cw * 0.19, 4 * s);
-      ctx.fillRect(cw * 0.23, -ch * 0.44, cw * 0.19, 4 * s);
+      ctx.fillRect(rmL.x + cw * 0.06, rmL.y + rearH * 0.22, cw * 0.2, Math.max(2, 4 * s));
+      ctx.fillRect(rmR.x - cw * 0.26, rmR.y + rearH * 0.22, cw * 0.2, Math.max(2, 4 * s));
 
-      if (car.kind === "police") {
+      if (car.kind === "taxi") {
+        // NYC Yellow Cab illuminated roof sign + checkered band
+        ctx.fillStyle = "#0f172a";
+        ctx.fillRect(rmL.x + cw * 0.05, rmL.y + rearH * 0.05, cw * 0.9, Math.max(1.5, 3 * s));
+        const rMid = (rrL.x + rrR.x + frL.x + frR.x) * 0.25;
+        const rY = (rrL.y + frL.y) * 0.5;
+        ctx.fillStyle = "#fef08a";
+        ctx.shadowBlur = 10 * s;
+        ctx.shadowColor = "#facc15";
+        ctx.fillRect(rMid - cw * 0.15, rY - 5 * s, cw * 0.3, 5 * s);
+        ctx.shadowBlur = 0;
+      } else if (car.kind === "police") {
+        ctx.fillStyle = "#0284c7";
+        ctx.fillRect(rmL.x + cw * 0.05, rmL.y + rearH * 0.06, cw * 0.9, Math.max(1.5, 3.5 * s));
+        const rMid = (rrL.x + rrR.x + frL.x + frR.x) * 0.25;
+        const rY = (rrL.y + frL.y) * 0.5;
         const flash = Math.floor(performance.now() / 120) % 2 === 0;
         ctx.fillStyle = flash ? "#ff2244" : "#00f3ff";
-        ctx.fillRect(-cw * 0.26, -ch * 1.12, cw * 0.24, 5 * s);
+        ctx.fillRect(rMid - cw * 0.26, rY - 5 * s, cw * 0.22, 5 * s);
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(rMid - cw * 0.04, rY - 5 * s, cw * 0.08, 5 * s);
         ctx.fillStyle = flash ? "#00f3ff" : "#ff2244";
-        ctx.fillRect(0, -ch * 1.12, cw * 0.24, 5 * s);
+        ctx.fillRect(rMid + cw * 0.04, rY - 5 * s, cw * 0.22, 5 * s);
       }
     }
 
@@ -1600,11 +2129,12 @@
       ctx.translate(-viewW * 0.5, -viewH * 0.5);
     }
 
-    drawAsphaltSky(proj.horizonY, worldZ);
+    const atmo = getAtmosphere(); // compute once per frame for all draw calls
+    drawAsphaltSky(proj.horizonY, worldZ, atmo);
 
-    // City terrain beneath horizon
+    // City terrain beneath horizon — dynamic colour from atmosphere
     const terrainGrad = ctx.createLinearGradient(0, proj.horizonY, 0, viewH);
-    terrainGrad.addColorStop(0, "#080e1a");
+    terrainGrad.addColorStop(0, atmo.terrain);
     terrainGrad.addColorStop(1, "#071316");
     ctx.fillStyle = terrainGrad;
     ctx.fillRect(-60, proj.horizonY, viewW + 120, viewH - proj.horizonY + 60);
@@ -1728,6 +2258,25 @@
       }
     }
 
+    // Periodic Elevated NYC Highway Flyovers (crossing over the main expressway!)
+    const flyoverStep = 1350;
+    const fBase = Math.floor(worldZ / flyoverStep);
+    const fFrac = worldZ % flyoverStep;
+    for (let fi = 0; fi <= 1; fi++) {
+      const fz = fi * flyoverStep + (flyoverStep - fFrac);
+      if (fz > -60 && fz < 1560) {
+        drawList.push({ z: fz, kind: "flyover", idx: fBase + fi });
+      }
+    }
+
+    // Periodic Brooklyn Bridge Gothic Suspension Overpass
+    const bridgeStep = 2700;
+    const bFrac = worldZ % bridgeStep;
+    const bz = bridgeStep - bFrac;
+    if (bz > -60 && bz < 1560) {
+      drawList.push({ z: bz, kind: "bridge" });
+    }
+
     if (run) {
       for (const r of run.ramps) {
         if (r.z > -60 && r.z < 1550) drawList.push({ z: r.z, kind: "ramp", obj: r });
@@ -1761,10 +2310,10 @@
         const pRBldg2 = projectCurved3D(2.55, z + 60, 0, proj, slices);
 
         // Two depth rows of Asphalt Metropolis Skyscrapers!
-        drawAsphaltSkyscraper(pLBldg2.x, pLBldg2.y, pLBldg2.scale, -1, seed + 19, fogAlpha, 2);
-        drawAsphaltSkyscraper(pRBldg2.x, pRBldg2.y, pRBldg2.scale, 1, seed + 23, fogAlpha, 2);
-        drawAsphaltSkyscraper(pLBldg1.x, pLBldg1.y, pLBldg1.scale, -1, seed, fogAlpha, 1);
-        drawAsphaltSkyscraper(pRBldg1.x, pRBldg1.y, pRBldg1.scale, 1, seed + 3, fogAlpha, 1);
+        drawAsphaltSkyscraper(pLBldg2.x, pLBldg2.y, pLBldg2.scale, -1, seed + 19, fogAlpha, 2, atmo);
+        drawAsphaltSkyscraper(pRBldg2.x, pRBldg2.y, pRBldg2.scale, 1, seed + 23, fogAlpha, 2, atmo);
+        drawAsphaltSkyscraper(pLBldg1.x, pLBldg1.y, pLBldg1.scale, -1, seed, fogAlpha, 1, atmo);
+        drawAsphaltSkyscraper(pRBldg1.x, pRBldg1.y, pRBldg1.scale, 1, seed + 3, fogAlpha, 1, atmo);
 
         draw3DTreePersp(pLTree.x, pLTree.y, pLTree.scale, seed, fogAlpha);
         draw3DTreePersp(pRTree.x, pRTree.y, pRTree.scale, seed + 1, fogAlpha);
@@ -1788,6 +2337,23 @@
         ctx.arc(pLLamp.x + 22 * pLLamp.scale, pLLamp.y - 78 * pLLamp.scale, 14 * pLLamp.scale, 0, Math.PI * 2);
         ctx.arc(pRLamp.x - 22 * pRLamp.scale, pRLamp.y - 78 * pRLamp.scale, 14 * pRLamp.scale, 0, Math.PI * 2);
         ctx.fill();
+
+        // Iconic NYC Manhattan street manhole steam plumes
+        if (seed % 2 === 0 && pLLamp.scale > 0.15) {
+          const steamX = seed % 4 === 0 ? pLLamp.x + 16 * pLLamp.scale : pRLamp.x - 16 * pRLamp.scale;
+          const steamY = pLLamp.y;
+          ctx.fillStyle = "rgba(226, 232, 240, 0.14)";
+          for (let st = 0; st < 3; st++) {
+            const lift = ((performance.now() * 0.03 + st * 14) % 42) * pLLamp.scale;
+            ctx.beginPath();
+            ctx.arc(steamX + Math.sin(st + performance.now() * 0.002) * 5 * pLLamp.scale, steamY - lift, (8 + st * 4) * pLLamp.scale, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      } else if (item.kind === "flyover") {
+        drawFlyoverBridge(item.z, proj, slices, item.idx);
+      } else if (item.kind === "bridge") {
+        drawBrooklynBridgeTower(item.z, proj, slices);
       } else if (item.kind === "gantry") {
         drawOverheadGantry(item.z, proj, slices, item.signIdx);
       } else if (item.kind === "ramp") {
@@ -1931,7 +2497,7 @@
         draw3DTreePersp(roadX - shoulderW - 22, y + 52, 0.9, seed, 0);
         if (roadX > 118) {
           const bx = Math.max(10, roadX - shoulderW - 58);
-          drawAsphaltSkyscraper(bx, y + 145, 0.85, -1, seed, 0, 1);
+          drawAsphaltSkyscraper(bx, y + 145, 0.85, -1, seed, 0, 1, null);
         }
       }
       const rightSpace = viewW - (roadX + roadW);
@@ -1939,7 +2505,7 @@
         draw3DTreePersp(roadX + roadW + shoulderW + 22, y + 70, 0.9, seed + 2, 0);
         if (rightSpace > 118) {
           const bx = roadX + roadW + shoulderW + 58;
-          drawAsphaltSkyscraper(bx, y + 135, 0.85, 1, seed + 5, 0, 1);
+          drawAsphaltSkyscraper(bx, y + 135, 0.85, 1, seed + 5, 0, 1, null);
         }
       }
     }
@@ -2063,6 +2629,18 @@
     btnCam.textContent = "CAM: " + CAMERAS[camIndex].label;
   }
 
+  function cycleTime() {
+    audio.unlock();
+    audio.click();
+    timeModeIndex = (timeModeIndex + 1) % TIME_MODES.length;
+    const mode = TIME_MODES[timeModeIndex];
+    // When manually selecting a fixed mode, snap dayPhase to that phase
+    if (mode === "DAY")    dayPhase = 0.08;
+    if (mode === "SUNSET") dayPhase = 1.0;
+    if (mode === "NIGHT")  dayPhase = 2.0;
+    btnTime.textContent = "TIME: " + mode;
+  }
+
   function cycleLights() {
     audio.unlock();
     audio.click();
@@ -2108,6 +2686,8 @@
       else if (state === "paused") setPaused(false);
     } else if (e.code === "KeyC") {
       cycleCamera();
+    } else if (e.code === "KeyT") {
+      cycleTime();
     } else if (e.code === "KeyL") {
       cycleLights();
     } else if (e.code === "KeyH") {
@@ -2169,6 +2749,7 @@
   });
 
   btnCam.addEventListener("click", cycleCamera);
+  btnTime.addEventListener("click", cycleTime);
   btnLights.addEventListener("click", cycleLights);
   btnWiper.addEventListener("click", toggleWiper);
   btnHazard.addEventListener("click", toggleHazard);
